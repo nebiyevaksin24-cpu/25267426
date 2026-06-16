@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doktor AI - Canlı Sınaq</title>
+    <style>
+        body { background: #0f172a; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; margin: 0; padding: 20px; box-sizing: border-box; }
+        #status { font-size: 22px; margin-bottom: 20px; color: #38bdf8; text-align: center; font-weight: bold; }
+        #startBtn { padding: 20px 40px; font-size: 20px; background: #0ea5e9; border: none; border-radius: 50px; cursor: pointer; color: white; font-weight: bold; }
+        
+        /* Xətaları görmək üçün xüsusi bölmə */
+        #debugLog { width: 100%; max-width: 400px; margin-top: 30px; padding: 15px; background: #1e293b; border-radius: 8px; border-left: 5px solid #ef4444; font-family: monospace; font-size: 14px; color: #f87171; word-break: break-all; }
+    </style>
+</head>
+<body>
+
+    <div id="status">Söhbəti Başladın</div>
+    <button id="startBtn">Doktor AI ilə Danış</button>
+    
+    <!-- Telefonda xətanı canlı görmək üçün -->
+    <div id="debugLog">Sistem Mesajları: Hazırdır. Xətalar burada görünəcək.</div>
+
+    <script>
+        // Sənin OpenAI API açarın
+        const OPENAI_API_KEY = "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";
+        
+        const statusText = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        const debugLog = document.getElementById('debugLog');
+
+        function logError(msg) {
+            debugLog.innerText = "XƏTA: " + msg;
+            console.error(msg);
+        }
+
+        function logStatus(msg) {
+            debugLog.innerText = "Sistem: " + msg;
+        }
+
+        // Səs tanıma dəstəyini yoxla
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            logError("Bu brauzer səs tanıma funksiyasını (SpeechRecognition) dəstəkləmir! Zəhmət olmasa Chrome ilə yoxlayın.");
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'az-AZ'; 
+        recognition.continuous = false;
+
+        startBtn.onclick = () => {
+            startBtn.style.display = 'none';
+            try {
+                recognition.start();
+                statusText.innerText = "Sizi dinləyirəm...";
+                logStatus("Mikrofon aktiv edildi. Danışın...");
+            } catch (e) {
+                logError("Mikrofon başladıla bilmədi: " + e.message);
+            }
+        };
+
+        recognition.onresult = async (event) => {
+            const userSpeech = event.results[0][0].transcript;
+            statusText.innerText = "Düşünürəm...";
+            logStatus(`Eşidilən söz: "${userSpeech}". İndi OpenAI-a göndərilir...`);
+
+            try {
+                const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${OPENAI_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: "gpt-4o-mini", 
+                        messages: [
+                            { role: "system", content: "Sən qısa cavab verən arıqlama mütəxəssisisən." },
+                            { role: "user", content: userSpeech }
+                        ]
+                    })
+                });
+
+                const data = await response.json();
+                
+                // Əgər API açarı bloklanıbsa, OpenAI xəta mesajı qaytaracaq
+                if (data.error) {
+                    logError(`OpenAI API Xətası: ${data.error.message} (Yəqin ki, açar bloklanıb)`);
+                    return;
+                }
+
+                const aiReply = data.choices[0].message.content;
+                logStatus("OpenAI-dan cavab gəldi. Səsli oxunur...");
+                speakText(aiReply);
+
+            } catch (error) {
+                logError("İnternet və ya server bağlantı xətası: " + error.message);
+            }
+        };
+
+        function speakText(text) {
+            statusText.innerText = "Doktor AI danışır...";
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'az-AZ'; 
+
+            utterance.onend = () => {
+                statusText.innerText = "Sizi yenidən dinləyirəm...";
+                recognition.start();
+            };
+            
+            utterance.onerror = (e) => {
+                logError("Səsli oxuma xətası: " + e.error);
+                recognition.start();
+            };
+
+            window.speechSynthesis.speak(utterance);
+        }
+
+        recognition.onerror = (event) => {
+            logError("Səs tanıma (Mikrofon) xətası: " + event.error);
+            if (event.error === 'not-allowed') {
+                logError("Mikrofon icazəsi rədd edilib! Saytın linkinin yanındakı kilid ikonuna basıb mikrofonu aktiv edin.");
+            }
+        };
+
+        recognition.onend = () => {
+            logStatus("Dinləmə sessiyası bitdi. Əgər AI danışmırsa, sistem yeni səs gözləyir.");
+        };
+    </script>
+</body>
+</html>
